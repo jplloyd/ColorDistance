@@ -29,11 +29,11 @@ def log_clamped(x):
     return log2(x * offs + EPS)
 
 
-def rgba_to_straight_spectral(rgba):
-    r, g, b, a = rgba
+def rgba_to_straight_spectral(*rgba):
     """Convert color channels to spectral, ignore alpha"""
-    spec = spectral.rgb_to_spectral(r, g, b)
-    return spec
+    # I don't know why the tuple gets wrapped in another
+    # tuple during when its parent is mapped over...
+    return spectral.rgb_to_spectral(*(rgba[0][:3]))
 
 
 def loggify(f):
@@ -62,6 +62,16 @@ def euclidean(c1, c2):
     return math.sqrt(sum([abs(i - j)**2 for i, j in zip(c1, c2)]))
 
 
+def max_diff_abs(c1, c2):
+    """Absolute difference of highest-deviation channel"""
+    return max([abs(i - j) for i, j in zip(c1, c2)])
+
+
+def max_diff_scaled(c1, c2):
+    """Scaled difference of highest-deviation channel"""
+    return max([abs(i - j) / k for i, j, k in zip(c1, c2, spectral.sums)])
+
+
 # Normalized distance functions
 
 def spectral_accum_diff(*cols):
@@ -84,9 +94,19 @@ def spectral_euclidean_log(*cols):
     return f(*cols) / LOG_WEIGHTS_DISTANCE_MAX
 
 
+def spectral_maxdiff_abs(*cols):
+    return spectralize(max_diff_abs)(*cols)
+
+
+def spectral_maxdiff_scaled(*cols):
+    return spectralize(max_diff_scaled)(*cols)
+
+
 distance_functions = [
     (spectral_accum_diff, "Lin. Accum. difference (Spectral)"),
     (spectral_accum_diff_log, "Lin. Accum. difference of log's (Spectral)"),
     (spectral_euclidean, "Euclidean distance (Spectral)"),
-    (spectral_euclidean_log, "Euclidean distance of log's (Spectral)")
+    (spectral_euclidean_log, "Euclidean distance of log's (Spectral)"),
+    (spectral_maxdiff_abs, "Maximum absolute channel diff (Spectral)"),
+    (spectral_maxdiff_scaled, "Maximum scaled channel diff (Spectral)"),
 ]

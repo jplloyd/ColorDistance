@@ -31,6 +31,7 @@ class Model():
         self.alpha = self.get_alpha()
 
     def set_col(self, index, col):
+        col = tuple(col)
         self.cols[index] = col
         self.distance = self.get_distance()
         self.alpha = self.get_alpha()
@@ -78,7 +79,7 @@ def go():
     w.set_title("Color distance model tester")
     w.set_size_request(600, 600)
 
-    black = (0.0,) * 4
+    black = (0.0,) * 3 + (1.0,)
     model = Model(black, black, 0.0)
 
     dist_label = Gtk.Label("Distance:")
