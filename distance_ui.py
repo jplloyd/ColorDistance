@@ -1,65 +1,16 @@
 import spectral
-import math
+import distance_models as dm
 import gi
 
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk # noqa
 from gi.repository import Gdk # noqa
 
-diff = spectral.diff
-
-SUMMED_WEIGHTS = sum(spectral.sums)
-N = spectral.NUM_WAVES
-EPS = spectral.WGM_EPSILON
-
-
-def distance_accum_diff(c1, c2):
-    accum_diff = 0.0
-    for i in range(N):
-        accum_diff += diff(c1[i], c2[i])
-    return accum_diff
-
-
-def distance_euclidian(c1, c2):
-    delta_sqrs = [diff(c1[i], c2[i])**2 for i in range(N)]
-    return math.sqrt(sum(delta_sqrs))
-
-
-def log_clamped(x):
-    offs = 1.0 - EPS
-    return spectral.log2(x * offs + EPS)
-
-
-def distance_accum_diff_log(c1, c2):
-    c1 = list(map(log_clamped, c1))
-    c2 = list(map(log_clamped, c2))
-    return distance_accum_diff(c1, c2)
-
-
-def distance_euclidian_log(c1, c2):
-    c1 = list(map(log_clamped, c1))
-    c2 = list(map(log_clamped, c2))
-    return distance_euclidian(c1, c2)
-
-
-dist_funcs = [
-    distance_accum_diff,
-    distance_accum_diff_log,
-    distance_euclidian,
-    distance_euclidian_log,
-]
-func_names = [
-    "Accum. difference (straight)",
-    "Accum. difference (log)",
-    "Euclidian distance (straight)",
-    "Euclidian distance (log)",
-]
-
 
 class Model():
 
     def __init__(self, c1, c2, tol):
-        self.distance_func = distance_euclidian
+        self.distance_func = dm.distance_functions[0][0]
         self.cols = [c1, c2]
         self.distance = self.get_distance()
         self.tolerance = tol
@@ -156,27 +107,38 @@ def go():
     cp1 = Gtk.ColorSelection()
     cp1.set_has_opacity_control(True)
     cp1.set_current_alpha(MAX_A)
+    cp1.set_halign(Gtk.Align.CENTER)
     cp1.connect("color-changed", col_change_cb, 0)
 
     cp2 = Gtk.ColorSelection()
-    cp2.connect("color-changed", col_change_cb, 1)
+    print(cp2.get_center_widget())
     cp2.set_has_opacity_control(True)
     cp2.set_current_alpha(MAX_A)
+    cp2.set_halign(Gtk.Align.CENTER)
+    cp2.connect("color-changed", col_change_cb, 1)
 
-    dist_func_store = Gtk.ListStore(str)
-    for i in range(len(dist_funcs)):
-        dist_func_store.append([func_names[i]])
+    dist_func_store = Gtk.ListStore(str, object)
+
+    def fill_store():
+        dist_func_store.clear()
+        for func, name in dm.distance_functions:
+            dist_func_store.append([name, func])
+
+    fill_store()
 
     func_combo = Gtk.ComboBox()
     func_combo.set_model(dist_func_store)
     cell = Gtk.CellRendererText()
     func_combo.pack_start(cell, True)
+    func_combo.set_hexpand(True)
     func_combo.add_attribute(cell, "text", 0)
 
     def func_change_cb(combo):
         act = combo.get_active()
         if act != -1:
-            model.set_distance_func(dist_funcs[act])
+            model.set_distance_func(
+                combo.get_model()[act][1]
+            )
             update_values()
 
     func_combo.connect("changed", func_change_cb)
@@ -199,7 +161,7 @@ def go():
 
     grid.attach(alpha_label, 0, 4, 1, 1)
     grid.attach(alpha_field, 1, 4, 1, 1)
-    grid.attach(func_combo, 0, 5, 1, fw)
+    grid.attach(func_combo, 0, 5, fw, 1)
 
     w.show_all()
     Gtk.main()
