@@ -1,4 +1,3 @@
-import spectral
 import distance_models as dm
 import gi
 
@@ -31,13 +30,7 @@ class Model():
         self.alpha = self.get_alpha()
 
     def get_distance(self):
-        r1, g1, b1, a1 = self.cols[0]
-        r2, g2, b2, a2 = self.cols[1]
-        spec1 = spectral.rgb_to_spectral(r1, g1, b1)
-        spec2 = spectral.rgb_to_spectral(r2, g2, b2)
-        spec1.append(a1)
-        spec2.append(a2)
-        return self.distance_func(spec1, spec2)
+        return self.distance_func(*self.cols)
 
     def get_alpha(self):
         if self.tolerance >= 1.0:
