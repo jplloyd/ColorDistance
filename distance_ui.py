@@ -46,9 +46,12 @@ class Model():
 
     def get_distance(self):
         if self.distance_func:
-            return self.distance_func(*self.cols)
-        else:
-            return float('NaN')
+            try:
+                return self.distance_func(*self.cols)
+            except Exception as e:
+                print("Exception when running distance function!")
+                print(e)
+        return float('NaN')
 
     def get_alpha(self):
         if self.distance == float('NaN'):
@@ -72,7 +75,7 @@ class Model():
 def go():
     w = Gtk.Window()
     w.connect("delete-event", lambda w, e: Gtk.main_quit())
-    w.set_title("This is the window title")
+    w.set_title("Color distance model tester")
     w.set_size_request(600, 600)
 
     black = (0.0,) * 4
