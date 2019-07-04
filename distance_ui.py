@@ -1,4 +1,5 @@
 import distance_models as dm
+import importlib
 import gi
 
 gi.require_version('Gtk', '3.0')
@@ -6,10 +7,17 @@ from gi.repository import Gtk # noqa
 from gi.repository import Gdk # noqa
 
 
+def reload_module(m):
+    if not hasattr(__builtins__, 'reload'):
+        importlib.reload(m)
+    else:
+        reload(m)
+
+
 class Model():
 
-    def __init__(self, c1, c2, tol):
-        self.distance_func = dm.distance_functions[0][0]
+    def __init__(self, c1, c2, tol, dist_func=None):
+        self.distance_func = dist_func
         self.cols = [c1, c2]
         self.distance = self.get_distance()
         self.tolerance = tol
@@ -30,9 +38,14 @@ class Model():
         self.alpha = self.get_alpha()
 
     def get_distance(self):
-        return self.distance_func(*self.cols)
+        if self.distance_func:
+            return self.distance_func(*self.cols)
+        else:
+            return float('NaN')
 
     def get_alpha(self):
+        if self.distance == float('NaN'):
+            return float('NaN')
         if self.tolerance >= 1.0:
             return 1.0
         if self.tolerance <= 0.0:
@@ -61,19 +74,21 @@ def go():
     dist_label = Gtk.Label("Distance:")
     dist_label.set_alignment(1.0, 0.5)
     dist_label.set_margin_right(10)
-    dist_field = Gtk.Label("0.0")
+    dist_field = Gtk.Label()
     dist_field.set_alignment(0.0, 0.5)
     alpha_label = Gtk.Label("Alpha:")
     alpha_label.set_alignment(1.0, 0.5)
     alpha_label.set_margin_right(10)
-    alpha_field = Gtk.Label("1.0")
+    alpha_field = Gtk.Label()
     alpha_field.set_alignment(0.0, 0.5)
 
     MAX_A = int(2**16 - 1)
 
     def update_values(*args, **kws):
-        dist_field.set_markup(str(model.distance))
-        alpha_field.set_markup(str(model.alpha))
+        dist_field.set_markup("<big>%.4f</big>" % model.distance)
+        alpha_field.set_markup("<big>%.4f</big>" % model.alpha)
+
+    update_values()
 
     def tol_cb(adj):
         model.set_tol(adj.get_value())
@@ -104,13 +119,14 @@ def go():
     cp1.connect("color-changed", col_change_cb, 0)
 
     cp2 = Gtk.ColorSelection()
-    print(cp2.get_center_widget())
     cp2.set_has_opacity_control(True)
     cp2.set_current_alpha(MAX_A)
     cp2.set_halign(Gtk.Align.CENTER)
     cp2.connect("color-changed", col_change_cb, 1)
 
     dist_func_store = Gtk.ListStore(str, object)
+
+    func_combo = Gtk.ComboBox()
 
     def fill_store():
         dist_func_store.clear()
@@ -119,7 +135,6 @@ def go():
 
     fill_store()
 
-    func_combo = Gtk.ComboBox()
     func_combo.set_model(dist_func_store)
     cell = Gtk.CellRendererText()
     func_combo.pack_start(cell, True)
@@ -135,6 +150,22 @@ def go():
             update_values()
 
     func_combo.connect("changed", func_change_cb)
+    if len(dist_func_store) > 0:
+        func_combo.set_active(0)
+
+    def reload_cb(button):
+        old_func = func_combo.get_active()
+        dist_func_store.clear()
+        model.set_distance_func(None)
+        reload_module(dm)
+        fill_store()
+        if old_func >= 0 and old_func < len(dist_func_store):
+            func_combo.set_active(old_func)
+        update_values()
+
+    reload_button = Gtk.Button("Reload distance functions")
+    reload_button.set_hexpand(True)
+    reload_button.connect("clicked", reload_cb)
 
     grid = Gtk.Grid()
     grid.set_row_spacing(6)
@@ -155,6 +186,7 @@ def go():
     grid.attach(alpha_label, 0, 4, 1, 1)
     grid.attach(alpha_field, 1, 4, 1, 1)
     grid.attach(func_combo, 0, 5, fw, 1)
+    grid.attach(reload_button, 0, 6, fw, 1)
 
     w.show_all()
     Gtk.main()
