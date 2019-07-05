@@ -11,7 +11,6 @@ import gi
 
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk # noqa
-from gi.repository import Gdk # noqa
 
 
 def reload_module(m):
@@ -21,48 +20,69 @@ def reload_module(m):
         reload(m)
 
 
-class Model():
+class Model(object):
 
     def __init__(self, c1, c2, tol, dist_func=None):
         self.distance_func = dist_func
         self.cols = [c1, c2]
-        self.distance = self.get_distance()
         self.tolerance = tol
-        self.alpha = self.get_alpha()
+        self.rgb_distance = None
+        self.rgba_distance = None
+        self.rgb_alpha = None
+        self.rgba_alpha = None
+        self._update_values()
+
+    def _update_values(self):
+        self.rgb_distance = self.get_rgb_distance()
+        self.rgba_distance = self.get_rgba_distance()
+        self.rgb_alpha = self.get_alpha(self.rgb_distance)
+        self.rgba_alpha = self.get_alpha(self.rgba_distance)
 
     def set_col(self, index, col):
         col = tuple(col)
         self.cols[index] = col
-        self.distance = self.get_distance()
-        self.alpha = self.get_alpha()
+        self._update_values()
 
     def set_tol(self, tol):
         self.tolerance = tol
-        self.alpha = self.get_alpha()
+        self.rgb_alpha = self.get_alpha(self.rgb_distance)
+        self.rgba_alpha  = self.get_alpha(self.rgba_distance)
 
     def set_distance_func(self, func):
         self.distance_func = func
-        self.distance = self.get_distance()
-        self.alpha = self.get_alpha()
+        self._update_values()
 
-    def get_distance(self):
+    def get_rgb_distance(self):
         if self.distance_func:
             try:
                 return self.distance_func(*self.cols)
             except Exception as e:
                 print("Exception when running distance function!")
                 print(e)
-        return float('NaN')
+        return None
 
-    def get_alpha(self):
-        if self.distance == float('NaN'):
-            return float('NaN')
+    def get_rgba_distance(self):
+        """Weighted sum of color & alpha deltas"""
+        if self.rgb_distance is None:
+            return None
+        a1, a2 = (c[3] for c in self.cols)
+        a_delta = abs(a1 - a2)
+        a_avg = (a1 + a2) / 2.0
+        # Unscientific heuristic
+        col_factor = a_avg * (1.0 - a_delta)
+        return self.rgb_distance * col_factor + a_delta * (1.0 - col_factor)
+
+    def get_alpha(self, distance):
+        """Distance -> Tolerance -> Fill alpha calculation
+        Currently uses the old GIMP/MyPaint equation.
+        """
+        if distance is None:
+            return None
         if self.tolerance >= 1.0:
             return 1.0
         if self.tolerance <= 0.0:
-            return 1.0 if self.distance == 0.0 else 0.0
-        dist = self.distance
-        dist = dist / self.tolerance
+            return 1.0 if distance == 0.0 else 0.0
+        dist = distance / self.tolerance
         if dist >= 1.0:
             return 0.0
         else:
@@ -77,27 +97,56 @@ def go():
     w = Gtk.Window()
     w.connect("delete-event", lambda w, e: Gtk.main_quit())
     w.set_title("Color distance model tester")
-    w.set_size_request(600, 600)
+    w.set_size_request(600, 800)
 
     black = (0.0,) * 3 + (1.0,)
     model = Model(black, black, 0.0)
 
-    dist_label = Gtk.Label("Distance:")
-    dist_label.set_alignment(1.0, 0.5)
-    dist_label.set_margin_right(10)
-    dist_field = Gtk.Label()
-    dist_field.set_alignment(0.0, 0.5)
-    alpha_label = Gtk.Label("Alpha:")
-    alpha_label.set_alignment(1.0, 0.5)
-    alpha_label.set_margin_right(10)
-    alpha_field = Gtk.Label()
-    alpha_field.set_alignment(0.0, 0.5)
+    # RGB distances and resulting-alpha display widgets
+
+    rgb_dist_label = Gtk.Label("RGB Distance:")
+    rgb_dist_label.set_alignment(1.0, 0.5)
+    rgb_dist_label.set_margin_right(10)
+
+    rgb_dist_field = Gtk.Label()
+    rgb_dist_field.set_alignment(0.0, 0.5)
+
+    rgb_alpha_label = Gtk.Label("RGB Fill-Alpha:")
+    rgb_alpha_label.set_alignment(1.0, 0.5)
+    rgb_alpha_label.set_margin_right(10)
+
+    rgb_alpha_field = Gtk.Label()
+    rgb_alpha_field.set_alignment(0.0, 0.5)
+
+    # RGBA distances and resulting-alpha display widgets
+
+    rgba_dist_label = Gtk.Label("RGBA Distance:")
+    rgba_dist_label.set_alignment(1.0, 0.5)
+    rgba_dist_label.set_margin_right(10)
+
+    rgba_dist_field = Gtk.Label()
+    rgba_dist_field.set_alignment(0.0, 0.5)
+
+    rgba_alpha_label = Gtk.Label("RGBA Fill-Alpha:")
+    rgba_alpha_label.set_alignment(1.0, 0.5)
+    rgba_alpha_label.set_margin_right(10)
+
+    rgba_alpha_field = Gtk.Label()
+    rgba_alpha_field.set_alignment(0.0, 0.5)
 
     MAX_A = int(2**16 - 1)
 
-    def update_values(*args, **kws):
-        dist_field.set_markup("<big>%.4f</big>" % model.distance)
-        alpha_field.set_markup("<big>%.4f</big>" % model.alpha)
+    def update_values():
+        if model.rgb_distance is None:
+            rgb_dist_field.set_markup(" - ")
+            rgba_dist_field.set_markup(" - ")
+            rgb_alpha_field.set_markup(" - ")
+            rgba_alpha_field.set_markup(" - ")
+        else:
+            rgb_dist_field.set_markup("<big>%.4f</big>" % model.rgb_distance)
+            rgb_alpha_field.set_markup("<big>%.4f</big>" % model.rgb_alpha)
+            rgba_dist_field.set_markup("<big>%.4f</big>" % model.rgba_distance)
+            rgba_alpha_field.set_markup("<big>%.4f</big>" % model.rgba_alpha)
 
     update_values()
 
@@ -164,13 +213,13 @@ def go():
     if len(dist_func_store) > 0:
         func_combo.set_active(0)
 
-    def reload_cb(button):
+    def reload_cb(_):
         old_func = func_combo.get_active()
         dist_func_store.clear()
         model.set_distance_func(None)
         reload_module(dm)
         fill_store()
-        if old_func >= 0 and old_func < len(dist_func_store):
+        if 0 <= old_func < len(dist_func_store):
             func_combo.set_active(old_func)
         update_values()
 
@@ -186,21 +235,36 @@ def go():
     grid.set_margin_bottom(10)
     w.add(grid)
     fw = 2
-    grid.attach(cp1, 0, 0, fw, 1)
-    grid.attach(cp2, 0, 1, fw, 1)
+    r = attach_inc_row(grid, cp1, 0, 0, fw, 1)
+    r = attach_inc_row(grid, cp2, 0, r, fw, 1)
+    r = attach_inc_row(grid, tol_slider, 0, r, fw, 1)
 
-    grid.attach(tol_slider, 0, 2, fw, 1)
+    grid.attach(rgb_dist_label, 0, r, 1, 1)
+    grid.attach(rgb_dist_field, 1, r, 1, 1)
+    r += 1
 
-    grid.attach(dist_label, 0, 3, 1, 1)
-    grid.attach(dist_field, 1, 3, 1, 1)
+    grid.attach(rgb_alpha_label, 0, r, 1, 1)
+    grid.attach(rgb_alpha_field, 1, r, 1, 1)
+    r += 1
 
-    grid.attach(alpha_label, 0, 4, 1, 1)
-    grid.attach(alpha_field, 1, 4, 1, 1)
-    grid.attach(func_combo, 0, 5, fw, 1)
-    grid.attach(reload_button, 0, 6, fw, 1)
+    grid.attach(rgba_dist_label, 0, r, 1, 1)
+    grid.attach(rgba_dist_field, 1, r, 1, 1)
+    r += 1
+
+    grid.attach(rgba_alpha_label, 0, r, 1, 1)
+    grid.attach(rgba_alpha_field, 1, r, 1, 1)
+    r += 1
+
+    r = attach_inc_row(grid, func_combo, 0, r, fw, 1)
+    grid.attach(reload_button, 0, r, fw, 1)
 
     w.show_all()
     Gtk.main()
+
+
+def attach_inc_row(grid, child, col, row, width, height):
+    grid.attach(child, col, row, width, height)
+    return row+1
 
 
 go()
